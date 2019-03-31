@@ -30,20 +30,25 @@
     }@catch (NSException *exception) {
         NSLog(@"Exception: %@", exception);
     }
+    @try{
+        dmc.disableVideoCompression=[[options objectForKey:@"disableVideoCompression"]boolValue];
+    }@catch (NSException *exception) {
+        NSLog(@"Exception: %@", exception);
+    }
     dmc._delegate=self;
     [self.viewController presentViewController:[[UINavigationController alloc]initWithRootViewController:dmc] animated:YES completion:nil];
 }
 
--(void) resultPicker:(NSMutableArray*) selectArray
+-(void) resultPicker:(NSMutableArray*) selectArray dmc:(DmcPickerViewController *)dmc
 {
-    
+
     NSString * tmpDir = NSTemporaryDirectory();
     NSString *dmcPickerPath = [tmpDir stringByAppendingPathComponent:@"dmcPicker"];
     NSFileManager *fileManager = [NSFileManager defaultManager];
     if(![fileManager fileExistsAtPath:dmcPickerPath ]){
        [fileManager createDirectoryAtPath:dmcPickerPath withIntermediateDirectories:YES attributes:nil error:nil];
     }
-    
+
     NSMutableArray * aListArray=[[NSMutableArray alloc] init];
     if([selectArray count]<=0){
         [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsArray:aListArray] callbackId:callbackId];
@@ -57,7 +62,11 @@
                 if(asset.mediaType==PHAssetMediaTypeImage){
                     [self imageToSandbox:asset dmcPickerPath:dmcPickerPath aListArray:aListArray selectArray:selectArray index:index];
                 }else{
-                    [self videoToSandboxCompress:asset dmcPickerPath:dmcPickerPath aListArray:aListArray selectArray:selectArray index:index];
+                    if (dmc.disableVideoCompression) {
+                        [self videoToSandbox:asset dmcPickerPath:dmcPickerPath aListArray:aListArray selectArray:selectArray index:index];
+                    } else {
+                        [self videoToSandboxCompress:asset dmcPickerPath:dmcPickerPath aListArray:aListArray selectArray:selectArray index:index];
+                    }
                 }
             }
             index++;
@@ -84,14 +93,14 @@
             NSLog(@"%@", [error localizedDescription]);
             [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:[error localizedDescription]] callbackId:callbackId];
         } else {
-            
+
             NSDictionary *dict=[NSDictionary dictionaryWithObjectsAndKeys:fullpath,@"path",[[NSURL fileURLWithPath:fullpath] absoluteString],@"uri",@"image",@"mediaType",size,@"size",[NSNumber numberWithInt:index],@"index", nil];
             [aListArray addObject:dict];
             if([aListArray count]==[selectArray count]){
                 [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsArray:aListArray] callbackId:callbackId];
             }
         }
-        
+
     }];
 }
 
@@ -104,12 +113,12 @@
     NSData *imageData = [NSData dataWithContentsOfFile:path];
     //UIImage * image= [[UIImage alloc] initWithContentsOfFile:[options objectForKey:@"path"] ];
     CGImageSourceRef imageRef=CGImageSourceCreateWithData((CFDataRef)imageData, NULL);
-    
+
     CFDictionaryRef imageInfo = CGImageSourceCopyPropertiesAtIndex(imageRef, 0,NULL);
-    
+
     NSDictionary  *nsdic = (__bridge_transfer  NSDictionary*)imageInfo;
     NSString* orientation=[nsdic objectForKey:key];
-   
+
     [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsString:orientation] callbackId:callbackId];
 
 
@@ -124,47 +133,56 @@
         NSString *compressCompletedjs = [NSString stringWithFormat:@"MediaPicker.icloudDownloadEvent(%f,%i)", progress,index];
         [self.commandDelegate evalJs:compressCompletedjs];
     };
-    [[PHImageManager defaultManager] requestAVAssetForVideo:asset options:options resultHandler:^(AVAsset *avsset, AVAudioMix *audioMix, NSDictionary *info) {
-        if ([avsset isKindOfClass:[AVURLAsset class]]) {
-            NSString *filename = [asset valueForKey:@"filename"];
-            AVURLAsset* urlAsset = (AVURLAsset*)avsset;
-            
-            NSString *fullpath=[NSString stringWithFormat:@"%@/%@", dmcPickerPath,filename];
-            NSLog(@"%@", urlAsset.URL);
-            NSData *data = [NSData dataWithContentsOfURL:urlAsset.URL options:NSDataReadingUncached error:nil];
 
-            NSNumber* size=[NSNumber numberWithLong: data.length];
-            NSError *error = nil;
-            if (![data writeToFile:fullpath options:NSAtomicWrite error:&error]) {
-                NSLog(@"%@", [error localizedDescription]);
-                [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:[error localizedDescription]] callbackId:callbackId];
-            } else {
-                
-                NSDictionary *dict=[NSDictionary dictionaryWithObjectsAndKeys:fullpath,@"path",[[NSURL fileURLWithPath:fullpath] absoluteString],@"uri",size,@"size",@"video",@"mediaType" ,[NSNumber numberWithInt:index],@"index", nil];
-                [aListArray addObject:dict];
-                if([aListArray count]==[selectArray count]){
-                    [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsArray:aListArray] callbackId:callbackId];
-                }
-            }
-           
-        }
+    NSString *filename = [asset valueForKey:@"filename"];
+    NSString *fullpath=[NSString stringWithFormat:@"%@/%@", dmcPickerPath,filename];
+
+    [[NSFileManager defaultManager] createFileAtPath:fullpath contents:nil attributes:nil];
+    NSFileHandle *outputFile = [NSFileHandle fileHandleForWritingAtPath:fullpath];
+
+    PHAssetResourceManager * manager = [PHAssetResourceManager defaultManager];
+    __block size_t totalSize = 0;
+    NSArray *resources = [PHAssetResource assetResourcesForAsset:asset];
+    NSUInteger resourceIndex = [resources indexOfObjectPassingTest:^BOOL(id  _Nonnull obj,
+                                                                 NSUInteger idx,
+                                                                 BOOL * _Nonnull stop) {
+        PHAssetResource* resource = (PHAssetResource*)obj;
+        return [resource type] == PHAssetResourceTypeVideo;
     }];
 
+    [manager requestDataForAssetResource:resources[resourceIndex] options:nil dataReceivedHandler:^(NSData *data) {
+        totalSize += [data length];
+        [outputFile writeData:data];
+    } completionHandler:^(NSError *error) {
+        [outputFile synchronizeFile];
+        [outputFile closeFile];
+
+        if (error) {
+            NSLog(@"%@", [error localizedDescription]);
+            [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:[error localizedDescription]] callbackId:callbackId];
+        } else {
+            NSDictionary *dict=[NSDictionary dictionaryWithObjectsAndKeys:fullpath,@"path",[[NSURL fileURLWithPath:fullpath] absoluteString],@"uri",[NSNumber numberWithLongLong:totalSize],@"size",@"video",@"mediaType" ,[NSNumber numberWithInt:index],@"index", nil];
+            [aListArray addObject:dict];
+            if([aListArray count]==[selectArray count]){
+                [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsArray:aListArray] callbackId:callbackId];
+            }
+        }
+    }];
 }
 
 -(void)videoToSandboxCompress:(PHAsset *)asset dmcPickerPath:(NSString*)dmcPickerPath aListArray:(NSMutableArray*)aListArray selectArray:(NSMutableArray*)selectArray index:(int)index{
     NSString *compressStartjs = [NSString stringWithFormat:@"MediaPicker.compressEvent('%@',%i)", @"start",index];
     [self.commandDelegate evalJs:compressStartjs];
     [[PHImageManager defaultManager] requestExportSessionForVideo:asset options:nil exportPreset:AVAssetExportPresetMediumQuality resultHandler:^(AVAssetExportSession *exportSession, NSDictionary *info) {
-        
+
 
         NSString *fullpath=[NSString stringWithFormat:@"%@/%@.%@", dmcPickerPath,[[NSProcessInfo processInfo] globallyUniqueString], @"mp4"];
         NSURL *outputURL = [NSURL fileURLWithPath:fullpath];
-        
+
         NSLog(@"this is the final path %@",outputURL);
-        
+
         exportSession.outputFileType=AVFileTypeMPEG4;
-        
+
         exportSession.outputURL=outputURL;
 
         [exportSession exportAsynchronouslyWithCompletionHandler:^{
@@ -172,9 +190,9 @@
             if (exportSession.status == AVAssetExportSessionStatusFailed) {
                [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"compress failed"] callbackId:callbackId];
                 NSLog(@"failed");
-                
+
             } else if(exportSession.status == AVAssetExportSessionStatusCompleted){
-                
+
                 NSLog(@"completed!");
                 NSString *compressCompletedjs = [NSString stringWithFormat:@"MediaPicker.compressEvent('%@',%i)", @"completed",index];
                 [self.commandDelegate evalJs:compressCompletedjs];
@@ -184,9 +202,9 @@
                     [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsArray:aListArray] callbackId:callbackId];
                 }
             }
-            
+
         }];
-        
+
     }];
 }
 
@@ -196,23 +214,23 @@
     UIImage *shotImage;
     //视频路径URL
     NSURL *fileURL = [NSURL fileURLWithPath:path];
-    
+
     AVURLAsset *asset = [[AVURLAsset alloc] initWithURL:fileURL options:nil];
-    
+
     AVAssetImageGenerator *gen = [[AVAssetImageGenerator alloc] initWithAsset:asset];
-    
+
     gen.appliesPreferredTrackTransform = YES;
-    
+
     CMTime time = CMTimeMakeWithSeconds(0.0, 600);
-    
+
     NSError *error = nil;
-    
+
     CMTime actualTime;
-    
+
     CGImageRef image = [gen copyCGImageAtTime:time actualTime:&actualTime error:&error];
-    
+
     shotImage = [[UIImage alloc] initWithCGImage:image];
-    
+
     CGImageRelease(image);
     CGFloat q=quality/100.0f;
     NSString *thumbnail=[UIImageJPEGRepresentation(shotImage,q) base64EncodedStringWithOptions:0];
@@ -231,21 +249,21 @@
         result= [[UIImage alloc] initWithContentsOfFile:path];
     }else{
         NSURL *fileURL = [NSURL fileURLWithPath:path];
-        
+
         AVURLAsset *asset = [[AVURLAsset alloc] initWithURL:fileURL options:nil];
-        
+
         AVAssetImageGenerator *gen = [[AVAssetImageGenerator alloc] initWithAsset:asset];
-        
+
         gen.appliesPreferredTrackTransform = YES;
-        
+
         CMTime time = CMTimeMakeWithSeconds(0.0, 600);
-        
+
         NSError *error = nil;
-        
+
         CMTime actualTime;
-        
+
         CGImageRef image = [gen copyCGImageAtTime:time actualTime:&actualTime error:&error];
-        
+
         result = [[UIImage alloc] initWithCGImage:image];
     }
     return result;
@@ -298,8 +316,8 @@
             [options setObject:size forKey:@"size"];
             [options setObject:filename forKey:@"name"];
             [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsDictionary:options] callbackId:callbackId];
-        }        
-        
+        }
+
     }else{
         [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsDictionary:options] callbackId:callbackId];
     }
@@ -356,14 +374,14 @@
 {
     //1.确定请求路径
     NSURL *url = [NSURL fileURLWithPath:path];
-    
+
     //2.创建可变的请求对象
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
-    
+
     //3.发送请求
     NSHTTPURLResponse *response = nil;
     [NSURLConnection sendSynchronousRequest:request returningResponse:&response error:nil];
-    
+
     NSString *mimeType = response.MIMEType;
     return mimeType;
 }

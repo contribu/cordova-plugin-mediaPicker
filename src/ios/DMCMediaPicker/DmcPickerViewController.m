@@ -25,28 +25,28 @@
 @end
 
 @implementation DmcPickerViewController
-    
+
 - (void)viewDidLoad {
     //init config
     self.maxSelectCount=self.maxSelectCount>0?self.maxSelectCount:15;
     self.selectMode=self.selectMode>0?self.selectMode:101;
     //config end
-    
+
     [super viewDidLoad];
     [self initView];
     [self requestPermission];
 }
-    
+
 -(void)initView{
     self.view.backgroundColor=[UIColor whiteColor];
     UIBarButtonItem *rightButtonItem = [[UIBarButtonItem alloc] initWithTitle:NSLocalizedString(@"Done",nil) style:UIBarButtonItemStylePlain target:self action:@selector(done)];
     UIBarButtonItem *leftButtonItem = [[UIBarButtonItem alloc] initWithTitle:NSLocalizedString(@"Cancel",nil) style:UIBarButtonItemStylePlain target:self action:@selector(cancel)];
     self.navigationItem.rightBarButtonItem = rightButtonItem;
     self.navigationItem.leftBarButtonItem=leftButtonItem;
-    
-    
+
+
     //[self setTitleView:self.selectMode==102?NSLocalizedString(@"Video",nil):NSLocalizedString(@"All",nil)];
-    
+
     //bottom bar
     [self.navigationController  setToolbarHidden:NO animated:YES];
     preview = [[UIBarButtonItem alloc] initWithTitle:NSLocalizedString(@"Preview",nil) style:UIBarButtonItemStylePlain target:self action:@selector(preview)];
@@ -65,10 +65,10 @@
         titleNameLabel.text=title;
         [titleNameLabel sizeToFit];
         titleView=[[UIView alloc]init];
-        
+
         titleNameLabel.center=CGPointMake(titleNameLabel.bounds.size.width/2,titleView.bounds.size.height/2);
         [titleView addSubview:titleNameLabel];
-        
+
         titleArrow=[UIButton buttonWithType:UIButtonTypeCustom];
         titleArrow.frame=CGRectMake(titleNameLabel.frame.size.width+2, 0, arrowHeight, arrowHeight);
         titleArrow.userInteractionEnabled=NO;
@@ -76,7 +76,7 @@
         [titleArrow setImage:[UIImage imageNamed:@"dmcPicker.bundle/up_arrow.png"] forState:UIControlStateSelected];
         [titleView addSubview:titleArrow];
         titleArrow.center=CGPointMake(titleNameLabel.frame.size.width+arrowHeight/2+2,titleView.bounds.size.height/2);
-        
+
         //添加点击手势
         UITapGestureRecognizer * tapGesture=[[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(titleTap:)];
         [titleView addGestureRecognizer:tapGesture];
@@ -105,9 +105,9 @@
         __weak DmcPickerViewController* weakSelf = self;
         //设置选择相册之后的block回调
         [albumlistView setDidSelectAlbumBlock:^(NSInteger index) {
-            
+
             [weakSelf show:index];
-            
+
         }];
         [self.view addSubview:albumlistView];
         titleArrow.selected=YES;
@@ -117,7 +117,7 @@
 //        }];
 //        self.navigationController.toolbar.alpha=0.4;
         [self.navigationController  setToolbarHidden:YES  animated:YES];
-        
+
     }else{
         [self hiddenAlbumlistView];
     }
@@ -138,25 +138,25 @@
     [self.navigationController  setToolbarHidden:NO  animated:YES];
 }
 
-    
+
 -(void) preview{
     PreviewViewController * dmc=[[PreviewViewController alloc] init];
     dmc._delegate=self;
     dmc.preArray=selectArray;
     [self.navigationController pushViewController:dmc animated:YES]; // 调用pushViewController
 }
-    
+
 -(void) done{
-    [self._delegate resultPicker:selectArray];
+    [self._delegate resultPicker:selectArray dmc:self];
     [self dismissViewControllerAnimated:YES completion:nil];
 }
-    
+
 -(void) cancel{
     NSMutableArray *nilArray=[[NSMutableArray alloc] init];
-    [self._delegate resultPicker:nilArray];
+    [self._delegate resultPicker:nilArray dmc:self];
     [self dismissViewControllerAnimated:YES completion:nil];
 }
-    
+
 -(void)requestPermission{
     //监测权限
     if ([PHPhotoLibrary authorizationStatus] != PHAuthorizationStatusAuthorized) {
@@ -178,23 +178,23 @@
         [self getAlassetData];
     }
 }
-    
+
 -(void) getAlassetData{
-    
+
     selectArray=[[NSMutableArray alloc] init];
     albumsTitlelist=[[NSMutableArray alloc] init];
     dataSource=[[NSMutableArray alloc] init];
-   
-    
+
+
     //获取相册
     PHFetchResult *smartAlbums = [PHAssetCollection       fetchAssetCollectionsWithType:PHAssetCollectionTypeSmartAlbum
                                                                                 subtype:PHAssetCollectionSubtypeAlbumRegular options:nil];
     PHFetchResult *syncedAlbums = [PHAssetCollection fetchAssetCollectionsWithType:PHAssetCollectionTypeAlbum
                                                                            subtype:PHAssetCollectionSubtypeAlbumSyncedAlbum options:nil];
     PHFetchResult *userCollections = [PHCollectionList fetchTopLevelUserCollectionsWithOptions:nil];
-    
+
     NSArray *allAlbums  = @[smartAlbums, userCollections, syncedAlbums];
-    
+
     PHFetchOptions *options = [[PHFetchOptions alloc] init];
     options.sortDescriptors = @[[NSSortDescriptor sortDescriptorWithKey:@"creationDate" ascending:NO]];
 
@@ -203,7 +203,7 @@
     }else if(self.selectMode==102){
         options.predicate = [NSPredicate predicateWithFormat:@"mediaType == %ld", PHAssetMediaTypeVideo];
     }
-    
+
     int defaultSelection, i = 0; //为了进入选择界面默认显示CameraRoll下的图片
 
     for (PHFetchResult *fetchResult in allAlbums) {
@@ -225,7 +225,7 @@
             }
         }
     }
-    
+
     _manager = [PHImageManager defaultManager];
     [self show: defaultSelection];
 }
@@ -272,12 +272,12 @@
 - (UICollectionView *)collectionView
 {
     if (_collectionView == nil) {
-        
+
         flowLayout = [[UICollectionViewFlowLayout alloc] init];
-        
-        
+
+
         _collectionView = [[UICollectionView alloc]initWithFrame:CGRectMake(0, 0, fDeviceWidth, fDeviceHeight) collectionViewLayout:flowLayout];
-        
+
         litemCount=3;
         if([[UIDevice currentDevice].model isEqualToString:@"iPad"]){
             litemCount=8;
@@ -290,40 +290,40 @@
         flowLayout.minimumInteritemSpacing = 1;
         //定义每个UICollectionView 的边距距
         flowLayout.sectionInset = UIEdgeInsetsMake(0, 0, 5, 0);//上左下右
-        
+
         //注册cell和ReusableView（相当于头部）
         [_collectionView registerClass:[CollectionViewCell class] forCellWithReuseIdentifier:@"cell"];
         //[_collectionView registerClass:[UICollectionReusableView class] forSupplementaryViewOfKind:UICollectionElementKindSectionHeader withReuseIdentifier:@"ReusableView"];
-        
+
         //设置代理
         _collectionView.delegate = self;
         _collectionView.dataSource = self;
-        
+
         //背景颜色
         _collectionView.backgroundColor = [UIColor whiteColor];
         //自适应大小
         _collectionView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-        
+
     }
     return _collectionView;
 }
-    
-    
-    
-    
+
+
+
+
 #pragma mark - UICollectionView delegate dataSource
 #pragma mark 定义展示的UICollectionViewCell的个数
 -(NSInteger)collectionView:(UICollectionView *)collectionView numberOfItemsInSection:(NSInteger)section
 {
     return fetchResult.count;
 }
-    
+
 #pragma mark 定义展示的Section的个数
 -(NSInteger)numberOfSectionsInCollectionView:(UICollectionView *)collectionView
 {
     return 1;
 }
-    
+
 #pragma mark 每个UICollectionView展示的内容
 -(UICollectionViewCell *)collectionView:(UICollectionView *)collectionView cellForItemAtIndexPath:(NSIndexPath *)indexPath
 {
@@ -336,7 +336,7 @@
     [_manager requestImageForAsset:asset targetSize:CGSizeMake(200 , 200)  contentMode:PHImageContentModeAspectFill options:option
                      resultHandler:^(UIImage * _Nullable result, NSDictionary * _Nullable info) {
                         BOOL downloadFinined = (![[info objectForKey:PHImageCancelledKey] boolValue] && ![info objectForKey:PHImageErrorKey] && ![[info objectForKey:PHImageResultIsDegradedKey] boolValue]);
-                        if (downloadFinined && result) { 
+                        if (downloadFinined && result) {
                             cell.imgView.image = result;
                         }
                      }];
@@ -345,7 +345,7 @@
         cell.labelL.hidden=NO;
         cell.labelR.hidden=NO;
         cell.labeGIF.hidden=YES;
-        
+
         NSString *dtime=[NSString stringWithFormat:@"%.0f",asset.duration];
         cell.labelL.text = [@" "stringByAppendingString:NSLocalizedString(@"Video",nil)];
         //Uilable默认会去除尾部空格所以处理一下
@@ -362,7 +362,7 @@
         cell.labelL.hidden=YES;
         cell.labelR.hidden=YES;
     }
-    
+
     if(i<0){
         [self hidenSelectView:cell];
     }else{
@@ -370,15 +370,15 @@
     }
     return cell;
 }
-    
-    
+
+
     //UICollectionView被选中时调用的方法
 -( void )collectionView:( UICollectionView *)collectionView didSelectItemAtIndexPath:( NSIndexPath *)indexPath{
-    
+
     PHAsset * asset=fetchResult[indexPath.row];
     NSInteger i=[self isSelect:asset];
     CollectionViewCell *cell = (CollectionViewCell *)[collectionView cellForItemAtIndexPath:indexPath];
-    
+
     if([selectArray count]>=self.maxSelectCount&&i<0){
         [self alertMax];
     }else{
@@ -389,10 +389,10 @@
             i<0?[self showSelectView:cell]:[self hidenSelectView:cell];
         }
     }
-    
+
     [self setBtnStatus];
 }
-    
+
 -(void)setBtnStatus{
     if([selectArray count]>0){
         self.navigationItem.rightBarButtonItem.enabled= YES;
@@ -404,19 +404,19 @@
         preview.enabled= NO;
     }
 }
-    
+
 -(void)showSelectView:( CollectionViewCell *)cell{
     cell.checkView.hidden=NO;
     cell.whiteView.hidden=NO;
     cell.whiteView.backgroundColor = [UIColor colorWithWhite:1 alpha:0.5];
     cell.checkView.image=[UIImage imageNamed:@"dmcPicker.bundle/select80.png"];
 }
-    
+
 -(void)hidenSelectView:( CollectionViewCell *)cell{
     cell.checkView.hidden=YES;
     cell.whiteView.hidden=YES;
 }
-    
+
 -(void) previewResultPicker:(NSMutableArray*) srray
 {
     selectArray=srray;
@@ -426,10 +426,10 @@
 
 -(void) previewDonePicker:(NSMutableArray*) srray
 {
-    [self._delegate resultPicker:srray];
+    [self._delegate resultPicker:srray dmc:self];
     [self dismissViewControllerAnimated:YES completion:nil];
 }
-    
+
 -(NSInteger)isSelect:(PHAsset *)asset
 {
     int is=-1;
@@ -444,21 +444,21 @@
     }
     return is;
 }
-    
+
 - (void)didReceiveMemoryWarning {
     [super didReceiveMemoryWarning];
 }
-    
+
 -(void)alertMax{
     UIAlertController *alertController = [UIAlertController alertControllerWithTitle:@""
                                                                              message:NSLocalizedString(@"maxSelectAlert",nil)
                                                                       preferredStyle:UIAlertControllerStyleAlert];
     UIAlertAction *okAction = [UIAlertAction actionWithTitle:NSLocalizedString(@"ok",nil) style:UIAlertActionStyleDefault handler:nil];
     [alertController addAction:okAction];
-    
+
     [self presentViewController:alertController animated:YES completion:nil];
 }
-    
+
 - (NSString *)getNewTimeFromDurationSecond:(NSInteger)duration {
     NSString *newTime;
     if (duration < 10) {

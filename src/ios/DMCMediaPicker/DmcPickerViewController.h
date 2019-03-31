@@ -2,8 +2,10 @@
 #import <UIKit/UIKit.h>
 #import <Photos/Photos.h>
 #import "PreviewViewController.h"
+
+@class DmcPickerViewController;
 @protocol DmcPickerDelegate<NSObject>
--(void) resultPicker:(NSMutableArray*) selectArray;
+-(void) resultPicker:(NSMutableArray*) selectArray dmc:(DmcPickerViewController *)dmc;
 @end
 
 @interface DmcPickerViewController : UIViewController <UICollectionViewDataSource,UICollectionViewDelegate,DmcPreviewDelegate>{
@@ -17,4 +19,5 @@
 @property (nonatomic, assign) NSInteger maxSelectCount;
 //'selectMode':101,//101=PICKER_IMAGE_VIDEO , 100=PICKER_IMAGE , 102=PICKER_VIDEO
 @property (nonatomic, assign) NSInteger selectMode;
+@property (nonatomic, assign) bool disableVideoCompression;
 @end
